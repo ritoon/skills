@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Check Health — Santé de l'entreprise &amp; des partenaires</title>
+<style>
+:root {
+  /* Palette volontairement neutre et douce : sauge / ambre / terracotta désaturés,
+     jamais de couleurs vives — voir references/dashboard.md (Extending). */
+  --bg: #f7f6f3; --card: #fffefc; --ink: #3b3b42; --muted: #8b8b92; --line: #ebe9e4;
+  --green: #5f8f75; --orange: #b08d57; --red: #b17672; --gray: #b4b4ba;
+  --green-bg: #edf2ee; --orange-bg: #f5efe4; --red-bg: #f6eceb; --gray-bg: #f1f1f2;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+       background: var(--bg); color: var(--ink); line-height: 1.5; padding: 24px 16px 48px; }
+.wrap { max-width: 1100px; margin: 0 auto; }
+header { margin-bottom: 24px; }
+header h1 { font-size: 22px; letter-spacing: -0.01em; }
+header .meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
+h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
+     margin: 28px 0 12px; }
+section { margin-bottom: 8px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.card .value { font-size: 22px; font-weight: 600; margin-top: 2px; white-space: nowrap; }
+.card .sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.card.alert-card .has-red { color: var(--red); }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: baseline; }
+.dot.green { background: var(--green); } .dot.orange { background: var(--orange); }
+.dot.red { background: var(--red); }     .dot.unknown { background: var(--gray); }
+.badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px; }
+.badge.green { color: var(--green); background: var(--green-bg); }
+.badge.orange { color: var(--orange); background: var(--orange-bg); }
+.badge.red { color: var(--red); background: var(--red-bg); }
+.badge.unknown { color: var(--muted); background: var(--gray-bg); }
+.legend { font-size: 12.5px; color: var(--muted); margin: 8px 0 0; }
+.legend .dot { margin: 0 4px 0 12px; }
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.table-scroll { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; min-width: 720px; }
+th, td { padding: 9px 12px; text-align: left; font-size: 13.5px; border-bottom: 1px solid var(--line); }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); background: #faf9f6; }
+td.num, th.num { text-align: right; }
+td.center, th.center { text-align: center; }
+tr.main { cursor: pointer; }
+tr.main:hover { background: #fbfaf8; }
+tr.details td { background: #faf9f6; font-size: 12.5px; color: #56565e; padding: 10px 16px 12px; }
+tr:last-child td { border-bottom: none; }
+.details dl { display: grid; grid-template-columns: 130px 1fr; gap: 2px 12px; }
+.details dt { color: var(--muted); }
+.details dd { margin: 0; }
+.flags span { display: inline-block; background: var(--gray-bg); border-radius: 6px; padding: 0 6px;
+              margin: 1px 4px 1px 0; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+ul.notes { list-style: none; }
+ul.notes li { color: var(--muted); font-size: 13px; padding: 4px 2px; }
+ul.notes li::before { content: "ℹ︎ "; }
+ul.alerts { list-style: none; }
+ul.alerts li { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+               padding: 10px 14px; margin-bottom: 8px; font-size: 14px; display: flex; gap: 10px; align-items: baseline; }
+ul.alerts li .who { font-weight: 600; }
+.empty { color: var(--muted); font-size: 13.5px; padding: 14px 16px; }
+svg.chart { width: 100%; height: auto; display: block; }
+footer { margin-top: 36px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
+#load-error { display: none; background: var(--red-bg); color: var(--red); border-radius: 10px;
+              padding: 14px 16px; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Santé de l'entreprise &amp; des partenaires</h1>
+    <div class="meta" id="meta"></div>
+    <div class="legend"><strong>Légende :</strong>
+      <span class="dot green"></span>OK
+      <span class="dot orange"></span>À surveiller
+      <span class="dot red"></span>Risque
+      <span class="dot unknown"></span>Non vérifiable
+    </div>
+  </header>
+
+  <div id="load-error">Ce fichier est le template brut : générez le tableau de bord avec
+    <code>python3 scripts/build_dashboard.py data.json dashboard.html</code>.</div>
+
+  <section><div class="cards" id="kpis"></div></section>
+
+  <section id="selfcheck-section" hidden>
+    <h2>Ma société — auto-contrôle Pappers</h2>
+    <div class="panel" id="selfcheck"></div>
+  </section>
+
+  <section id="cash-section" hidden>
+    <h2>Flux de trésorerie nets — 12 derniers mois</h2>
+    <div class="panel"><svg class="chart" id="cashflow" viewBox="0 0 720 170" role="img"
+      aria-label="Flux de trésorerie nets mensuels"></svg></div>
+  </section>
+
+  <section id="alerts-section" hidden>
+    <h2>Alertes</h2>
+    <ul class="alerts" id="alerts"></ul>
+  </section>
+
+  <section id="notes-section" hidden>
+    <h2>Notes de couverture</h2>
+    <ul class="notes" id="notes"></ul>
+  </section>
+
+  <section>
+    <h2>Clients</h2>
+    <div class="table-scroll"><table id="clients"></table></div>
+  </section>
+
+  <section>
+    <h2>Fournisseurs</h2>
+    <div class="table-scroll"><table id="suppliers"></table></div>
+  </section>
+
+  <footer id="footer"></footer>
+</div>
+
+<script type="application/json" id="check-health-data">__CHECK_HEALTH_DATA__</script>
+<script>
+"use strict";
+let DATA;
+try {
+  DATA = JSON.parse(document.getElementById("check-health-data").textContent);
+} catch (e) {
+  document.getElementById("load-error").style.display = "block";
+}
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g,
+    c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+const EUR = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+const eur = v => (v == null || isNaN(v)) ? "—" : EUR.format(v);
+const pct = v => (v == null || isNaN(v)) ? "—" : Math.round(v * 100) + " %";
+const STATUS_LABEL = { green: "OK", orange: "À surveiller", red: "Risque", unknown: "Inconnu" };
+const norm = s => STATUS_LABEL[s] ? s : "unknown";
+const dot = s => `<span class="dot ${norm(s)}" title="${esc(STATUS_LABEL[norm(s)])}"></span>`;
+const badge = s => `<span class="badge ${norm(s)}">${esc(STATUS_LABEL[norm(s)])}</span>`;
+
+function render(d) {
+  const org = d.organization || {};
+  document.getElementById("meta").textContent =
+    [org.name, org.siren ? "SIREN " + org.siren : null,
+     d.generated_at ? "généré le " + new Date(d.generated_at).toLocaleString("fr-FR") : null]
+    .filter(Boolean).join(" · ");
+  renderKpis(org, d.alerts || []);
+  renderSelfCheck(org.self_check);
+  renderCashflow(org.cash_trend || []);
+  renderAlerts(d.alerts || []);
+  renderNotes(org.notes || []);
+  const cps = d.counterparties || [];
+  renderTable("clients", cps.filter(c => c.role === "client" || c.role === "both"), true);
+  renderTable("suppliers", cps.filter(c => c.role === "supplier" || c.role === "both"), false);
+  document.getElementById("footer").innerHTML =
+    "Sources : compte Qonto (lecture seule, via MCP) et registre Pappers. Aucune donnée bancaire " +
+    "(IBAN, e-mails, montants) n'a été transmise à Pappers. Les correspondances sanctions/PPE reposent " +
+    "sur nom + date de naissance : <strong>toute alerte doit être vérifiée manuellement</strong> avant décision.";
+}
+
+function card(label, value, sub, extraClass) {
+  return `<div class="card ${extraClass || ""}"><div class="label">${esc(label)}</div>` +
+         `<div class="value">${value}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
+}
+
+function renderKpis(org, alerts) {
+  const r = org.receivables || {}, p = org.payables || {};
+  const reds = alerts.filter(a => a.severity === "red").length;
+  const oranges = alerts.filter(a => a.severity === "orange").length;
+  const html = [
+    card("Trésorerie totale", eur(org.balance_total),
+         (org.accounts || []).length > 1 ? (org.accounts.length + " comptes") : ""),
+    card("Encours clients", eur(r.outstanding),
+         r.overdue ? `dont ${eur(r.overdue)} en retard (${r.invoices_overdue ?? "?"} fact.)` : "aucun retard"),
+    card("Encours fournisseurs", eur(p.outstanding),
+         p.overdue ? `dont ${eur(p.overdue)} en retard` : "aucun retard"),
+    card("Autonomie de trésorerie",
+         org.runway_months == null ? "—" : org.runway_months.toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + " mois",
+         org.runway_months == null ? "flux net positif ou inconnu" : "au rythme des 12 derniers mois"),
+    card("Concentration clients", pct(org.top_client_share), "part du 1er client dans le CA 12 mois"),
+    card("Alertes", `<span class="${reds ? "has-red" : ""}">${reds + oranges}</span>`,
+         `${reds} rouge(s) · ${oranges} orange(s)`, "alert-card")
+  ].join("");
+  document.getElementById("kpis").innerHTML = html;
+}
+
+function renderSelfCheck(sc) {
+  if (!sc) return;
+  document.getElementById("selfcheck-section").hidden = false;
+  document.getElementById("selfcheck").innerHTML =
+    `Légal ${dot(sc.legal && sc.legal.status)} · Finances ${dot(sc.financial && sc.financial.status)}` +
+    ` · Conformité ${dot(sc.compliance && sc.compliance.status)} &nbsp; ${badge(sc.overall)}`;
+}
+
+function renderCashflow(trend) {
+  if (!trend.length) return;
+  document.getElementById("cash-section").hidden = false;
+  const svg = document.getElementById("cashflow");
+  const W = 720, H = 170, padL = 8, padB = 22, padT = 12;
+  const plotH = H - padB - padT, baseline = padT + plotH / 2;
+  const max = Math.max(...trend.map(t => Math.abs(t.net || 0)), 1);
+  const bw = (W - padL * 2) / trend.length;
+  let out = `<line x1="${padL}" y1="${baseline}" x2="${W - padL}" y2="${baseline}" stroke="#e0ded8" stroke-width="1"/>`;
+  trend.forEach((t, i) => {
+    const net = t.net || 0;
+    const h = Math.abs(net) / max * (plotH / 2 - 4);
+    const x = padL + i * bw + bw * 0.15, w = bw * 0.7;
+    const y = net >= 0 ? baseline - h : baseline;
+    const color = net >= 0 ? "var(--green)" : "var(--red)";
+    out += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(h, 1).toFixed(1)}"` +
+           ` rx="2" fill="${color}"><title>${esc(t.month)} : net ${eur(net)} (entrées ${eur(t.inflow)}, sorties ${eur(t.outflow)})</title></rect>`;
+    out += `<text x="${(padL + i * bw + bw / 2).toFixed(1)}" y="${H - 6}" font-size="9" fill="#6b7280"` +
+           ` text-anchor="middle">${esc((t.month || "").slice(2))}</text>`;
+  });
+  svg.innerHTML = out;
+}
+
+function renderAlerts(alerts) {
+  if (!alerts.length) return;
+  document.getElementById("alerts-section").hidden = false;
+  document.getElementById("alerts").innerHTML = alerts.map(a =>
+    `<li>${dot(a.severity)}<span><span class="who">${esc(a.name || (a.scope === "organization" ? "Ma société" : ""))}</span>` +
+    ` — ${esc(a.message)}</span></li>`).join("");
+}
+
+function renderNotes(notes) {
+  if (!notes.length) return;
+  document.getElementById("notes-section").hidden = false;
+  document.getElementById("notes").innerHTML = notes.map(n => `<li>${esc(n)}</li>`).join("");
+}
+
+function detailsHtml(c) {
+  const fin = c.financial || {}, m = fin.metrics || {};
+  const persons = ((c.compliance || {}).checked_persons || []).map(p =>
+    `${esc(p.name)}${p.role ? " (" + esc(p.role) + ")" : ""} — PPE : ${p.pep ? "⚠️ oui" : "non"}, sanctions : ${p.sanctions ? "⚠️ correspondance" : "aucune"}`);
+  const flags = ["legal", "financial", "compliance"]
+    .flatMap(a => ((c[a] || {}).flags || []).map(f => `<span>${esc(f)}</span>`)).join("");
+  const rows = [
+    ["SIREN", c.siren ? `${esc(c.siren)} <small>(source : ${esc(c.siren_source || "?")})</small>` : "non résolu"],
+    ["Signaux", flags ? `<span class="flags">${flags}</span>` : "aucun"],
+    ["Finances " + (fin.year || ""), (m.chiffre_affaires != null || m.resultat != null || m.tresorerie != null)
+      ? `CA ${eur(m.chiffre_affaires)} · résultat ${eur(m.resultat)} · trésorerie ${eur(m.tresorerie)}` : "comptes non disponibles"],
+    ["Personnes vérifiées", persons.length ? persons.join("<br>") : "aucune"],
+    ["Notes", (c.notes || []).length ? (c.notes || []).map(esc).join("<br>") : "—"]
+  ];
+  return `<dl>${rows.map(([t, v]) => `<dt>${esc(t)}</dt><dd>${v}</dd>`).join("")}</dl>`;
+}
+
+function renderTable(id, list, isClient) {
+  const table = document.getElementById(id);
+  if (!list.length) {
+    table.outerHTML = `<div class="empty" id="${id}">Aucun élément.</div>`;
+    return;
+  }
+  list = [...list].sort((a, b) => ((b.exposure || {}).outstanding || 0) - ((a.exposure || {}).outstanding || 0));
+  const head = `<thead><tr><th>Nom</th><th>SIREN</th><th class="num">Encours</th><th class="num">Retard</th>` +
+    `<th class="center">Légal</th><th class="center">Finances</th><th class="center">Conformité</th><th>Global</th></tr></thead>`;
+  const body = list.map((c, i) => {
+    const e = c.exposure || {};
+    return `<tr class="main" data-i="${i}">` +
+      `<td>${esc(c.name)}${c.role === "both" ? " <small>(client &amp; fournisseur)</small>" : ""}` +
+      `${c.kind === "individual" ? " <small>(particulier)</small>" : ""}</td>` +
+      `<td>${esc(c.siren || "—")}</td>` +
+      `<td class="num">${eur(e.outstanding)}${isClient && e.share_of_revenue ? `<br><small>${pct(e.share_of_revenue)} du CA</small>` : ""}</td>` +
+      `<td class="num">${e.overdue ? eur(e.overdue) : "—"}</td>` +
+      `<td class="center">${dot((c.legal || {}).status)}</td>` +
+      `<td class="center">${dot((c.financial || {}).status)}</td>` +
+      `<td class="center">${dot((c.compliance || {}).status)}</td>` +
+      `<td>${badge(c.overall)}</td></tr>` +
+      `<tr class="details" hidden><td colspan="8">${detailsHtml(c)}</td></tr>`;
+  }).join("");
+  table.innerHTML = head + `<tbody>${body}</tbody>`;
+  table.querySelectorAll("tr.main").forEach(tr => {
+    tr.addEventListener("click", () => { const d = tr.nextElementSibling; d.hidden = !d.hidden; });
+  });
+}
+
+if (DATA) render(DATA);
+</script>
+</body>
+</html>
